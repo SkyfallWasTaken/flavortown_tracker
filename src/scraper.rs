@@ -69,10 +69,18 @@ pub struct ShopItem {
     pub regions: Vec<Region>,
 }
 
-fn scrape_region(region: &Region) -> Result<ShopItems> {
+fn scrape_region(region: &Region, csrf_token: &String) -> Result<ShopItems> {
+    let mut params = HashMap::new();
+    params.insert("region", region.code());
+    CLIENT
+        .patch("https://flavortown.hackclub.com/shop/update_region")
+        .header("X-CSRF-Token", csrf_token)
+        .form(&params)
+        .send()?
+        .error_for_status()?;
+
     let res = CLIENT
         .get("https://flavortown.hackclub.com/shop")
-        .query(&[("region", region.code())])
         .send()?
         .error_for_status()?;
     assert_eq!(res.status(), StatusCode::OK);
@@ -151,8 +159,25 @@ fn scrape_region(region: &Region) -> Result<ShopItems> {
 pub fn scrape() -> Result<Vec<ShopItem>> {
     let mut items: HashMap<ShopItemId, ShopItem> = HashMap::new();
 
+    let res = CLIENT
+        .get("https://flavortown.hackclub.com/shop")
+        .send()?
+        .error_for_status()?;
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = res.text()?;
+    let document = Html::parse_document(&html);
+    let selector = Selector::parse("meta[name=\"csrf-token\"]").unwrap();
+    let csrf_token = document
+        .select(&selector)
+        .next()
+        .ok_or_else(|| eyre!("Failed to find csrf-token"))?
+        .attr("content")
+        .unwrap()
+        .parse::<String>()
+        .unwrap();
+
     for region in Region::VARIANTS {
-        let region_items = scrape_region(region)?;
+        let region_items = scrape_region(region, &csrf_token)?;
 
         for item in region_items.into_iter() {
             match items.get_mut(&item.id) {
