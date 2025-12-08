@@ -4,7 +4,7 @@ use crate::config::CONFIG;
 use color_eyre::{Result, eyre::eyre};
 use once_cell::sync::Lazy;
 use reqwest::blocking::Client;
-use reqwest::{StatusCode, Url, header};
+use reqwest::{StatusCode, Url, header, redirect};
 use scraper::{Html, Selector};
 use strum::VariantArray;
 use strum_macros::{Display, VariantArray};
@@ -15,19 +15,20 @@ static CLIENT: Lazy<Client> = Lazy::new(|| {
     Client::builder()
         .user_agent(&CONFIG.user_agent)
         .default_headers(headers)
+        .redirect(redirect::Policy::none())
         .build()
         .expect("Failed to build scraping client")
 });
 
 #[derive(Display, Debug, VariantArray, Clone)]
 pub enum Region {
-    #[strum(to_string = "USA")]
+    #[strum(to_string = "United States")]
     UnitedStates,
 
-    #[strum(to_string = "Europe")]
+    #[strum(to_string = "EU")]
     Europe,
 
-    #[strum(to_string = "UK")]
+    #[strum(to_string = "United Kingdom")]
     UnitedKingdom,
 
     #[strum(to_string = "India")]
@@ -39,7 +40,7 @@ pub enum Region {
     #[strum(to_string = "Australia")]
     Australia,
 
-    #[strum(to_string = "Global")]
+    #[strum(to_string = "Rest of World")]
     Global,
 }
 
@@ -73,19 +74,29 @@ fn scrape_region(region: &Region, csrf_token: &String) -> Result<ShopItems> {
     let mut params = HashMap::new();
     params.insert("region", region.code());
     CLIENT
-        .patch("https://flavortown.hackclub.com/shop/update_region")
+        .patch(CONFIG.base_url.join("shop/update_region")?)
         .header("X-CSRF-Token", csrf_token)
         .form(&params)
         .send()?
         .error_for_status()?;
 
     let res = CLIENT
-        .get("https://flavortown.hackclub.com/shop")
+        .get(CONFIG.base_url.join("shop")?)
         .send()?
         .error_for_status()?;
     assert_eq!(res.status(), StatusCode::OK);
     let html = res.text()?;
     let document = Html::parse_document(&html);
+    let root = document.root_element();
+
+    let selected_region = select_one(
+        &root,
+        "button.dropdown__button > span.dropdown__selected > span.dropdown__char-span",
+    )?
+    .text()
+    .next()
+    .unwrap();
+    assert_eq!(selected_region, region.to_string());
 
     let selector = Selector::parse(".shop-item-card").unwrap();
     let mut items = Vec::new();
@@ -104,10 +115,10 @@ fn scrape_region(region: &Region, csrf_token: &String) -> Result<ShopItems> {
             .ok_or_else(|| eyre!("missing image src"))?
             .parse()?;
 
-        let href: Url = select_one(&element, "div.shop-item-card__order-button > a.btn")?
+        let href_part = select_one(&element, "div.shop-item-card__order-button > a.btn")?
             .attr("href")
-            .ok_or_else(|| eyre!("missing shop order button's url"))?
-            .parse()?;
+            .ok_or_else(|| eyre!("missing shop order button's url"))?;
+        let href = CONFIG.base_url.join(href_part)?;
 
         let shop_item_id: ShopItemId = href
             .query_pairs()
@@ -137,7 +148,7 @@ pub fn scrape() -> Result<Vec<ShopItem>> {
     let mut items: HashMap<ShopItemId, ShopItem> = HashMap::new();
 
     let res = CLIENT
-        .get("https://flavortown.hackclub.com/shop")
+        .get(CONFIG.base_url.join("shop")?)
         .send()?
         .error_for_status()?;
     assert_eq!(res.status(), StatusCode::OK);
@@ -152,6 +163,7 @@ pub fn scrape() -> Result<Vec<ShopItem>> {
         .unwrap()
         .parse::<String>()
         .unwrap();
+    dbg!(&csrf_token);
 
     for region in Region::VARIANTS {
         let region_items = scrape_region(region, &csrf_token)?;

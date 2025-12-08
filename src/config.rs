@@ -1,5 +1,6 @@
 use color_eyre::eyre::Context;
 use once_cell::sync::Lazy;
+use reqwest::Url;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -7,10 +8,16 @@ pub struct Config {
     pub cookie: String,
     #[serde(default = "default_user_agent")]
     pub user_agent: String,
+    #[serde(default = "default_base_url")]
+    pub base_url: Url,
 }
 
 fn default_user_agent() -> String {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36".into()
+}
+
+fn default_base_url() -> Url {
+    Url::parse("https://flavortown.hackclub.com/").unwrap()
 }
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| {
