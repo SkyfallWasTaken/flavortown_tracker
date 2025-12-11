@@ -4,7 +4,7 @@ use crate::config::CONFIG;
 use color_eyre::{Result, eyre::eyre};
 use once_cell::sync::Lazy;
 use reqwest::blocking::Client;
-use reqwest::{Url, header, redirect};
+use reqwest::{StatusCode, Url, header, redirect};
 use scraper::{ElementRef, Html, Selector};
 use strum::VariantArray;
 use strum_macros::{Display, VariantArray};
@@ -74,7 +74,7 @@ fn select_one<'a>(element: &'a ElementRef, selector: &str) -> Result<ElementRef<
 
 fn parse_shop_item(element: ElementRef) -> Result<ShopItem> {
     let title = select_one(&element, "h4")?.inner_html();
-    let description = select_one(&element, "p.shop-item-card__description")?.inner_html();
+    let description = select_one(&element, "div.shop-item-card__description > p")?.inner_html();
     let price: u32 = select_one(&element, "span.shop-item-card__price")?
         .text()
         .collect::<String>()
@@ -86,17 +86,10 @@ fn parse_shop_item(element: ElementRef) -> Result<ShopItem> {
         .attr("src")
         .ok_or_else(|| eyre!("missing image src"))?
         .parse()?;
-
-    let href = select_one(&element, "div.shop-item-card__order-button > a.btn")?
-        .attr("href")
-        .ok_or_else(|| eyre!("missing shop order button's url"))?;
-
-    let id: ShopItemId = CONFIG
-        .base_url
-        .join(href)?
-        .query_pairs()
-        .find_map(|(k, v)| (k == "shop_item_id").then(|| v.parse().ok()).flatten())
-        .ok_or_else(|| eyre!("can't find or parse shop item id"))?;
+    let id = element
+        .attr("data-shop-id")
+        .ok_or_else(|| eyre!("missing item id"))?
+        .parse()?;
 
     Ok(ShopItem {
         title,
@@ -109,12 +102,12 @@ fn parse_shop_item(element: ElementRef) -> Result<ShopItem> {
 }
 
 fn fetch_shop_page() -> Result<String> {
-    CLIENT
+    let res = CLIENT
         .get(CONFIG.base_url.join("shop")?)
         .send()?
-        .error_for_status()?
-        .text()
-        .map_err(Into::into)
+        .error_for_status()?;
+    assert_eq!(res.status(), StatusCode::OK);
+    res.text().map_err(Into::into)
 }
 
 fn get_csrf_token() -> Result<String> {
@@ -128,12 +121,13 @@ fn get_csrf_token() -> Result<String> {
 }
 
 fn set_region(region: &Region, csrf_token: &str) -> Result<()> {
-    CLIENT
+    let res = CLIENT
         .patch(CONFIG.base_url.join("shop/update_region")?)
         .header("X-CSRF-Token", csrf_token)
         .form(&[("region", region.code())])
         .send()?
         .error_for_status()?;
+    assert_eq!(res.status(), StatusCode::OK);
     Ok(())
 }
 
