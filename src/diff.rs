@@ -19,8 +19,10 @@ fn format_prices(prices: &HashMap<Region, u32>) -> String {
 
     match price_entries.as_slice() {
         [(region, price)] => format!("{price} ({region})"),
-        entries if entries.len() == Region::VARIANTS.len() 
-            && entries.iter().all(|(_, p)| **p == *entries[0].1) => {
+        entries
+            if entries.len() == Region::VARIANTS.len()
+                && entries.iter().all(|(_, p)| **p == *entries[0].1) =>
+        {
             format!("{} (Rest of World)", entries[0].1)
         }
         entries => entries
@@ -45,7 +47,11 @@ fn escape_markdown(text: &str) -> String {
 }
 
 fn item_header(emoji: &str, item: &ShopItem, prices: &HashMap<Region, u32>) -> String {
-    format!("{emoji} {} ({EMOJI_SHELLS} {})", item.title, format_prices(prices))
+    format!(
+        "{emoji} {} ({EMOJI_SHELLS} {})",
+        item.title,
+        format_prices(prices)
+    )
 }
 
 fn item_description(desc: &str) -> String {
@@ -70,15 +76,25 @@ fn render_new_item(item: &ShopItem) -> Vec<SlackBlock> {
     vec![
         SlackHeaderBlock::new(pt!(item_header(EMOJI_NEW, item, &item.prices))).into(),
         SlackSectionBlock::new().with_text(md!(section_text)).into(),
-        SlackImageBlock::new(item.image_url.clone().into(), format!("Image for {}", item.title)).into(),
+        SlackImageBlock::new(
+            item.image_url.clone().into(),
+            format!("Image for {}", item.title),
+        )
+        .into(),
     ]
 }
 
 fn render_deleted_item(item: &ShopItem) -> Vec<SlackBlock> {
     vec![
         SlackHeaderBlock::new(pt!(item_header(EMOJI_TRASH, item, &item.prices))).into(),
-        SlackSectionBlock::new().with_text(md!(item_description(&item.description))).into(),
-        SlackImageBlock::new(item.image_url.clone().into(), format!("Image for {}", item.title)).into(),
+        SlackSectionBlock::new()
+            .with_text(md!(item_description(&item.description)))
+            .into(),
+        SlackImageBlock::new(
+            item.image_url.clone().into(),
+            format!("Image for {}", item.title),
+        )
+        .into(),
     ]
 }
 
@@ -90,7 +106,11 @@ fn render_updated_item(old: &ShopItem, new: &ShopItem) -> Vec<SlackBlock> {
     };
 
     let price = if prices_changed(&old.prices, &new.prices) {
-        format!("{} → {}", format_prices(&old.prices), format_prices(&new.prices))
+        format!(
+            "{} → {}",
+            format_prices(&old.prices),
+            format_prices(&new.prices)
+        )
     } else {
         format_prices(&new.prices)
     };
@@ -99,8 +119,16 @@ fn render_updated_item(old: &ShopItem, new: &ShopItem) -> Vec<SlackBlock> {
         (true, true) => String::new(),
         (false, false) if old.description == new.description => item_description(&new.description),
         _ => {
-            let old_desc = if old.description.is_empty() { "_no description_" } else { &escape_markdown(&old.description) };
-            let new_desc = if new.description.is_empty() { "_no description_" } else { &escape_markdown(&new.description) };
+            let old_desc = if old.description.is_empty() {
+                "_no description_"
+            } else {
+                &escape_markdown(&old.description)
+            };
+            let new_desc = if new.description.is_empty() {
+                "_no description_"
+            } else {
+                &escape_markdown(&new.description)
+            };
             format!("{old_desc} → {new_desc}\n")
         }
     };
@@ -116,16 +144,28 @@ fn render_updated_item(old: &ShopItem, new: &ShopItem) -> Vec<SlackBlock> {
     ];
 
     if old.image_url != new.image_url {
-        blocks.push(SlackImageBlock::new(old.image_url.clone().into(), format!("Old image for {}", new.title)).into());
+        blocks.push(
+            SlackImageBlock::new(
+                old.image_url.clone().into(),
+                format!("Old image for {}", new.title),
+            )
+            .into(),
+        );
     }
 
-    blocks.push(SlackImageBlock::new(new.image_url.clone().into(), format!("New image for {}", new.title)).into());
+    blocks.push(
+        SlackImageBlock::new(
+            new.image_url.clone().into(),
+            format!("New image for {}", new.title),
+        )
+        .into(),
+    );
     blocks
 }
 
 fn render_channel_ping() -> Vec<SlackBlock> {
     vec![SlackContextBlock::new(vec![SlackContextBlockElement::MarkDown(md!(format!(
-        "pinging <!channel> · <https://github.com/skyfallwastaken/flavortown_tracker|{EMOJI_STAR} star the repo!> · <https://hackclub.slack.com/archives/C091UF79VDM|{EMOJI_ROBOT} discord/slackbot ysws>"
+        "pinging <!channel> · <https://github.com/skyfallwastaken/flavortown-tracker|{EMOJI_STAR} star the repo!> · <https://hackclub.slack.com/archives/C091UF79VDM|{EMOJI_ROBOT} discord/slackbot ysws>"
     )))]).into()]
 }
 
@@ -147,20 +187,24 @@ pub fn compute_diff(old_items: &ShopItems, new_items: &ShopItems) -> ItemDiff {
     let new_map: HashMap<_, _> = new_items.iter().map(|i| (i.id, i)).collect();
 
     let mut diff = ItemDiff {
-        new_items: new_items.iter()
+        new_items: new_items
+            .iter()
             .filter(|item| !old_map.contains_key(&item.id))
             .cloned()
             .collect(),
-        deleted_items: old_items.iter()
+        deleted_items: old_items
+            .iter()
             .filter(|item| !new_map.contains_key(&item.id))
             .cloned()
             .collect(),
         updated_items: Vec::new(),
     };
 
-    diff.updated_items = new_items.iter()
+    diff.updated_items = new_items
+        .iter()
         .filter_map(|new_item| {
-            old_map.get(&new_item.id)
+            old_map
+                .get(&new_item.id)
                 .filter(|&&old_item| old_item != new_item)
                 .map(|old_item| ((*old_item).clone(), new_item.clone()))
         })

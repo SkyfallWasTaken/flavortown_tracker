@@ -1,0 +1,11 @@
+target
+.git
+*.md
+flavortown-storage/
+snap_*.json
+*.tgz
+**/node_modules
+**/dist
+Dockerfile
+docker-compose.yml
+**/.DS_Store
