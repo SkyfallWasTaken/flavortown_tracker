@@ -8,6 +8,7 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct Config {
     pub cookie: String,
+    pub webhook_url: Url,
     #[serde(default = "default_user_agent")]
     pub user_agent: String,
     #[serde(default = "default_base_url")]
@@ -29,7 +30,6 @@ fn default_storage_path() -> PathBuf {
 }
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| {
-    dotenvy::dotenv().ok();
     envy::from_env::<Config>()
         .wrap_err("failed to load config")
         .unwrap()

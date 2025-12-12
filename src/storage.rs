@@ -6,6 +6,7 @@ use crate::scraper::{CLIENT, ShopItems};
 
 use color_eyre::{Result, eyre::eyre};
 use dashmap::DashMap;
+use log::debug;
 use once_cell::sync::Lazy;
 use reqwest::{
     Url,
@@ -54,7 +55,7 @@ pub static CDN_CACHE_DB: Lazy<Db> = Lazy::new(|| {
 });
 
 static UPLOAD_ONCE: Lazy<DashMap<usize, Arc<once_cell::sync::OnceCell<Url>>>> =
-    Lazy::new(|| DashMap::new());
+    Lazy::new(DashMap::new);
 
 #[derive(Deserialize)]
 struct CdnResponse {
@@ -64,12 +65,13 @@ struct CdnResponse {
 pub fn upload_to_cdn(image_id: usize, image_url: &Url) -> Result<Url> {
     let key = image_id.to_le_bytes();
 
-    if let Some(cached) = CDN_CACHE_DB.get(&key)? {
+    if let Some(cached) = CDN_CACHE_DB.get(key)? {
         let url_str = std::str::from_utf8(&cached)?;
         return Ok(Url::parse(url_str)?);
     }
 
     // get the cell/lock for this specific image_id.
+    debug!("Didn't find {image_url} (blob ID: {image_id}) - uploading to CDN.");
     let cell = UPLOAD_ONCE
         .entry(image_id)
         .or_insert_with(|| Arc::new(once_cell::sync::OnceCell::new()))
@@ -90,7 +92,7 @@ pub fn upload_to_cdn(image_id: usize, image_url: &Url) -> Result<Url> {
             .send()?
             .error_for_status()?
             .json()?;
-        CDN_CACHE_DB.insert(&key, json.url.as_str().as_bytes())?;
+        CDN_CACHE_DB.insert(key, json.url.as_str().as_bytes())?;
         Ok::<Url, color_eyre::eyre::ErrReport>(json.url)
     })?;
 
@@ -98,7 +100,7 @@ pub fn upload_to_cdn(image_id: usize, image_url: &Url) -> Result<Url> {
 }
 
 fn ext_from_url(url: &Url) -> Option<String> {
-    let filename = url.path_segments()?.last()?;
+    let filename = url.path_segments()?.next_back()?;
 
     Path::new(filename)
         .extension()

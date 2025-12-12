@@ -4,6 +4,7 @@ use std::hash::Hash;
 use crate::config::CONFIG;
 use crate::storage::{CDN_CACHE_DB, upload_to_cdn};
 use color_eyre::{Result, eyre::eyre};
+use log::debug;
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use reqwest::blocking::Client;
@@ -65,7 +66,7 @@ impl Region {
 pub type ShopItems = Vec<ShopItem>;
 pub type ShopItemId = usize;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ShopItem {
     pub title: String,
     pub description: String,
@@ -74,6 +75,14 @@ pub struct ShopItem {
 
     pub image_id: usize,
     pub id: ShopItemId,
+}
+
+impl ShopItem {
+    pub fn buy_link(&self) -> Url {
+        let mut url = CONFIG.base_url.join("shop/order").unwrap();
+        url.set_query(Some(format!("shop_item_id={}", self.id).as_str()));
+        url
+    }
 }
 
 fn select_one<'a>(element: &'a ElementRef, selector: &str) -> Result<ElementRef<'a>> {
@@ -174,6 +183,7 @@ pub fn scrape() -> Result<Vec<ShopItem>> {
     let csrf_token = get_csrf_token()?;
 
     for region in Region::VARIANTS {
+        debug!("Now scraping {:?}", region);
         for item in scrape_region(region, &csrf_token)? {
             items
                 .entry(item.id)
